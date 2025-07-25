@@ -1,21 +1,23 @@
 from model import AzureOpenAIClient
 import json
+import requests
 import os
 from pypdf import PdfReader
 import gradio as gr
 
-def push(text):
-    # requests.post(
-    #     "https://api.ntfy.net/1/messages.json",
-    #     data={
-    #         "message": text,
-    #     },
-    # )
-    print(f"Pushover: {text}")
+def notify(text):
+    requests.post(
+        "https://ntfy.sh/agentone",
+        data={
+            "token": os.getenv("PUSHOVER_TOKEN"),
+            "user": os.getenv("PUSHOVER_USER"),
+            "message": text,
+        },
+    )
 
 
 def record_user_details(email, name="Name not provided", notes="not provided"):
-    push(f"Recording {name} with email {email} and notes {notes}")
+    notify(f"Recording {name} with email {email} and notes {notes}")
     return {"recorded": "ok"}
 
 record_user_details_json = {
@@ -44,7 +46,7 @@ record_user_details_json = {
 
 
 def record_improper_question(question):
-    push(f"Recording {question}")
+    notify(f"Recording {question}")
     return {"recorded": "ok"}
 
 
@@ -105,7 +107,7 @@ class Company:
         system_prompt = f"You are acting as {self.name}. You are answering questions on {self.name}'s website, \
 particularly questions related to {self.name}'s founder, company, and products. \
 Your responsibility is to represent {self.name} for interactions on the website as faithfully as possible. \
-You are given a summary of {self.name}'s background and profile which you can use to answer questions. \
+You are given a summary of {self.name} founder's background and profile which you can use to answer questions. \
 Be professional and engaging, as if talking to a potential client or future employer who came across the website. \
 If you don't know the answer to any question, or find violence/vulgar in question use your record_improper_question tool to record the question that you couldn't answer, even if it's about something trivial or unrelated to career. \
 If the user is engaging in discussion, try to steer them towards getting in touch via email; ask for their email and record it using your record_user_details tool. "
@@ -114,10 +116,14 @@ If the user is engaging in discussion, try to steer them towards getting in touc
         system_prompt += f"With this context, please chat with the user, always staying in character as {self.name}."
         return system_prompt
 
+    def sanitize_message(self, msg):
+        return {"role": msg["role"], "content": msg["content"]}
+
+
     def chat(self, message, history):
         messages = (
             [{"role": "system", "content": self.system_prompt()}]
-            + history
+            + [self.sanitize_message(m) for m in history]
             + [{"role": "user", "content": message}]
         )
         done = False
@@ -126,7 +132,6 @@ If the user is engaging in discussion, try to steer them towards getting in touc
                 messages, tools
             )
             if response.choices[0].finish_reason == "tool_calls":
-                print("Tool calls detected, processing...", flush=True)
                 message = response.choices[0].message
                 tool_calls = message.tool_calls
                 results = self.handle_tool_call(tool_calls)

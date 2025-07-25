@@ -16,7 +16,7 @@ class AzureOpenAIClient:
     def generate_response(self, messages, tools):
         response = self.client.chat.completions.create(
             model=self.model,
-            messages=messages, tools= tools,
-            max_tokens=150
+            messages=messages, 
+            tools= tools
         )
         return response
